@@ -1,0 +1,5 @@
+# Ignore Virtual Environment Files
+nfl_env/
+
+# Ignore Jupyter Checkpoints
+.ipynb_checkpoints/
