@@ -3,3 +3,6 @@ nfl_env/
 
 # Ignore Jupyter Checkpoints
 .ipynb_checkpoints/
+
+# Ignore Data files
+data/
