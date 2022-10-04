@@ -90,6 +90,18 @@ def get_games_per_score(url):
 
     return games
     
+def add_stats(games):
+    # Give a half point to ties
+    def ties(row):
+        return 0.5 if row['pts_win']==row['pts_lose'] else row['home_win']
+    games['home_win'] = games.apply(ties, axis=1)
+
+    # Set game_date to datetime
+    games['game_date'] = pd.to_datetime(games['game_date'], format='%Y-%m-%d')
+
+    return games
+
+
 def get_data():
     """Iterate over all links in get_all_game_score_links() function
         to retrieve all basic NFL game data since 1920"""
@@ -117,7 +129,7 @@ def get_data():
     return df
 
 if __name__=='__main__':
-    df = get_data()
+    df = add_stats(get_data())
 
     # Write to csv
     today = datetime.datetime.now()
