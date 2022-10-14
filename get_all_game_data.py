@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from bs4 import BeautifulSoup
 import requests
 import re
@@ -34,7 +35,7 @@ def get_all_game_score_links(soup=None):
     return links
 
 
-def get_games_per_score(url):
+def get_games_per_score(url, existing=None):
     """This function is meant to be iterated over each of the links returned
        from the get_all_game_score_links() function."""
 
@@ -45,14 +46,26 @@ def get_games_per_score(url):
     # Find the table
     table = soup.find('table', attrs={'id': 'games'})  
 
+    # Raise error if existing is wrong type
+    if not isinstance(existing, (list, type(None))):
+        raise TypeError('The existing input must be either a list or NoneType')
+
     # Get the games data
     games = {}
     for i, row in enumerate(table.find_all('tr')[1:]):
         row_dict = {}  # re-initialize row_dict
+
+        # TODO Skip this row if boxscore is in the existing list
+        # if existing is not None:
+        #     import pdb
+        #     pdb.set_trace()
+        #     print('hello world')
+
+        # Otherwise, loop thru all values
         for col in row.find_all('td'):
             # Set row dictionary values
             col_name = col['data-stat']
-
+            
             # Determine special columns
             if col_name=='winner':
                 # winner_id
@@ -99,12 +112,39 @@ def add_stats(games):
     # Set game_date to datetime
     games['game_date'] = pd.to_datetime(games['game_date'], format='%Y-%m-%d')
 
+    #------- Break into seasons -----------
+    # Get unique years to generate seasons
+    years = games['game_date'].dt.year.unique()
+    seasons = [(datetime.date(yr,8,1), datetime.date(yr+1,3,1)) for yr in years]
+
+    # Organize games by date
+    games = games.sort_values('game_date')
+    games.insert(2, 'season', np.nan)  # initialize season column
+
+    # Set season and type
+    for season in seasons:
+        games.loc[games.game_date.dt.date.between(season[0], season[1]),'season'] = season[0].year
+    games['season'] = games['season'].astype('int')
+    #---------------------------------------
+
     return games
 
 
-def get_data():
+def get_data(wait_time=2, all_games=None):
     """Iterate over all links in get_all_game_score_links() function
         to retrieve all basic NFL game data since 1920"""
+
+    # If all_games is a Dataframe, this function adds to that frame, otherwise this is an initial data pull
+    if isinstance(all_games, pd.DataFrame):
+        add_data = True
+        boxscore_links = list(all_games.boxscore.unique())  # this is a unique id for each row
+    elif isinstance(all_games, type(None)):
+        add_data = False
+        boxscore_links = None
+    else:
+        raise TypeError('The all_games input must be None if this is an initial data pull, '+
+                        'otherwise, all_games should be a pd.DataFrame type.')
+
     # Look thru game score links
     links = get_all_game_score_links()
     games = {}
@@ -114,7 +154,7 @@ def get_data():
         print(f'Retrieving {win}-{loss} Score....{i+1} of {len(links)}', end='\r')
 
         # Dictionary for each score
-        new_games_raw = get_games_per_score(link)
+        new_games_raw = get_games_per_score(link, existing=boxscore_links)
 
         # Rename keys so that no dupes exist
         key_prefix = f'{i:04}'
@@ -123,7 +163,7 @@ def get_data():
 
         # Combine old games and new games
         games = {**games, **new_games}
-        time.sleep(2)
+        time.sleep(wait_time)
 
     df = pd.DataFrame.from_dict(games, orient='index')
     return df
