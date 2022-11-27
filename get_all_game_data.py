@@ -52,14 +52,18 @@ def get_games_per_score(url, existing=None):
 
     # Get the games data
     games = {}
+    site_stub = 'https://www.pro-football-reference.com'
     for i, row in enumerate(table.find_all('tr')[1:]):
         row_dict = {}  # re-initialize row_dict
 
         # TODO Skip this row if boxscore is in the existing list
-        # if existing is not None:
-        #     import pdb
-        #     pdb.set_trace()
-        #     print('hello world')
+        if existing is not None:
+            site = row.find('td', attrs={'data-stat': 'boxscore_word'}).find('a').get('href')
+            site = site_stub + site
+            game_exists = site in existing
+
+            if game_exists:
+                continue
 
         # Otherwise, loop thru all values
         for col in row.find_all('td'):
@@ -89,7 +93,7 @@ def get_games_per_score(url, existing=None):
                 # box_score
                 try:
                     site = col.find('a').get('href')
-                    row_dict['boxscore'] = 'https://www.pro-football-reference.com'+site
+                    row_dict['boxscore'] = site_stub + site
                 except:
                     row_dict['boxscore'] = None
                 continue
@@ -136,10 +140,14 @@ def get_data(wait_time=2, all_games=None):
 
     # If all_games is a Dataframe, this function adds to that frame, otherwise this is an initial data pull
     if isinstance(all_games, pd.DataFrame):
-        add_data = True
+        data_exists = True
         boxscore_links = list(all_games.boxscore.unique())  # this is a unique id for each row
+
+        # Prepopulate games dict with all_games
+        games = all_games.reset_index(drop=True).to_dict(orient='index')
+
     elif isinstance(all_games, type(None)):
-        add_data = False
+        data_exists = False
         boxscore_links = None
     else:
         raise TypeError('The all_games input must be None if this is an initial data pull, '+
@@ -157,9 +165,11 @@ def get_data(wait_time=2, all_games=None):
         new_games_raw = get_games_per_score(link, existing=boxscore_links)
 
         # Rename keys so that no dupes exist
-        key_prefix = f'{i:04}'
-        new_games = {(key_prefix+str(k)): new_games_raw[k] 
-                        for k in new_games_raw.keys()}
+        if not data_exists:
+            key_prefix = f'{i:04}'
+            new_games = {(key_prefix+str(k)): new_games_raw[k] 
+                            for k in new_games_raw.keys()}
+        # TODO: Determine how to work with indexes for both with and without all_games
 
         # Combine old games and new games
         games = {**games, **new_games}
