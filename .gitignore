@@ -1,5 +1,7 @@
-# Ignore Virtual Environment Files
+# Ignore unnecessary folders
 nfl_env/
+__pycache__/
+
 
 # Ignore Jupyter Checkpoints
 .ipynb_checkpoints/
