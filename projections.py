@@ -192,9 +192,83 @@ class GetData:
 
         return pd.DataFrame(teams).T
 
+    def team_offense_stats(self, soup=None, season=None):
+        """
+        Get the nfl team offensive stats.
+
+        Parameters
+        ----------
+        soup : bs4.BeautifulSoup, optional
+            Soup object from 'https://www.pro-football-reference.com/years/{season}/' request. If no 
+            input is entered, the soup object is created.
+        season : str, int, float, optional
+            Season (year) that is desired to be used if soup is None. Defaults to current year.
+
+        Returns
+        -------
+        list of pd.DataFrame
+            List of length=10 pertaining to the various team defensive stat categories.
+        """
+        # Consider inputted season
+        is_season_change = False
+        if season is not None:
+            is_season_change = (int(season) != int(self.season))
+            self.season = season
+            
+        # Generate soup if not inputted
+        if soup is not None:
+            self.year_soup = soup
+        elif is_season_change:
+            self.year_soup = self.get_year_soup()
+
+        # Fetch the correct div
+        div_id = ['all_team_stats', 'all_passing', 'all_rushing', 'all_returns', 'all_kicking', 'all_punting',
+                  'all_team_scoring', 'all_team_conversions', 'all_drives']
+        div_tbls = self.year_soup.find_all('div', attrs={'class': 'table_wrapper'})
+
+        stat_list = []  # Initiate list of dataframes
+        for div_tbl in div_tbls:
+            # Skip if table not part of the list of ids
+            if div_tbl.get('id') not in div_id:
+                continue
+
+            tbl = div_tbl.find('table')
+            if tbl is None: continue  # Some table are None, skip them
+            tbl_name = tbl.find('caption').text
+
+            # Get the tables
+            non_std_tables = []
+            if tbl_name in non_std_tables:
+                stat_list.append(self.__scrape_offense_nonstd(tbl))
+            else:
+                stat_list.append(self.__scrape_offense_standard(tbl))
+
+
+        # # Uses def_soup
+        # div_tbls = self.def_soup.find_all('div', attrs={'class': 'table_wrapper'})
+        
+        # stat_list = []   # Initiate list of dataframes
+        # for div_tbl in div_tbls:
+        #     tbl = div_tbl.find('table')
+        #     if tbl is None: continue  # Some tables are None, skip them
+        #     try:
+        #         tbl_name = tbl.find('caption').text
+        #     except:
+        #         tbl_name = "UNKNOWN"
+        #         print('Excepted')
+
+        #     # Get the tables
+        #     non_std_tables = ['Team Advanced Defense Table']
+        #     if tbl_name in non_std_tables:
+        #         stat_list.append(self.__scrape_defense_nonstd(tbl))
+        #     else:
+        #         stat_list.append(self.__scrape_defense_standard(tbl))
+
+        # return stat_list
+
     def team_defense_stats(self, soup=None, season=None):
         """
-        Get the nfl standings.
+        Get the nfl team defensive stats.
 
         Parameters
         ----------
@@ -291,7 +365,6 @@ class GetData:
         df.name = tbl_name
 
         return df
-
 
     @staticmethod
     def __scrape_defense_nonstd(tbl):
