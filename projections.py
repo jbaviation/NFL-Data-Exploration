@@ -3,7 +3,6 @@ import numpy as np
 from bs4 import BeautifulSoup
 import requests
 import re
-import time
 import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -17,27 +16,26 @@ class GetData:
     """
     This class facilitates the retrieval of data necessary to perform projections.
     """
-    def __init__(self, season=None, year_soup=None, def_soup=None) -> None:
+    def __init__(self, season=None, year_soup=None, off_soup=None, def_soup=None) -> None:
         # Set season
         self.season = get_current_season() if season is None else season
 
         # Get soups
         self.year_soup = year_soup if year_soup is not None else self.get_year_soup()
+        self.off_soup = off_soup if off_soup is not None else self.get_offense_soup()
         self.def_soup = def_soup if def_soup is not None else self.get_defense_soup()
 
 
     ## ----------- Get soups ------------ ##
     def get_year_soup(self):
-        """Get soup associated with yearly season stats."""
+        """Get soup associated with yearly season standings."""
         url = f'https://www.pro-football-reference.com/years/{self.season}/'
         page = requests.get(url)
         return BeautifulSoup(page.content, 'html.parser')
     
-    def get_defense_soup(self):
-        """Get soup associated with yearly team defensive stats."""
-        url = f'https://www.pro-football-reference.com/years/{self.season}/opp.htm'
-        # page = requests.get(url)
-        # soup = BeautifulSoup(page.content, 'html.parser')
+    def get_offense_soup(self):
+        """Get soup associated with yearly team offensive stats."""
+        url = f'https://www.pro-football-reference.com/years/{self.season}/'
 
         ## I think javascript is used to render this page, need to use selenium
         # Initiate webdriver and get site
@@ -47,7 +45,32 @@ class GetData:
 
         # Wait for the critical elements of page to load
         try:
-            WebDriverWait(driver, 5).until(expected_conditions.visibility_of_element_located((By.ID, 'all_passing')))
+            WebDriverWait(driver, 5).until(expected_conditions.visibility_of_element_located((By.ID, 'div_team_stats')))
+        except:
+            driver.quit()
+            raise LookupError('Unable to retrieve the offense stats page.')
+        
+        # Turn into soup
+        # time.sleep(0.5)
+        soup = BeautifulSoup(driver.page_source, 'lxml')
+        driver.quit()
+
+        return soup
+    
+    def get_defense_soup(self):
+        """Get soup associated with yearly team defensive stats."""
+        url = f'https://www.pro-football-reference.com/years/{self.season}/opp.htm'
+
+        ## I think javascript is used to render this page, need to use selenium
+        # Initiate webdriver and get site
+        s = Service('/opt/homebrew/bin/chromedriver')
+        driver = webdriver.Chrome(service=s)
+        driver.get(url)
+
+        # Wait for the critical elements of page to load
+        try:
+            WebDriverWait(driver, 5).until(expected_conditions.visibility_of_element_located((By.ID, 'rushing')))
+            # WebDriverWait(driver, 5).until(expected_conditions.visibility_of_element_located((By.ID, 'all_passing')))
         except:
             driver.quit()
             raise LookupError('Unable to retrieve the defense page.')
@@ -217,16 +240,16 @@ class GetData:
             
         # Generate soup if not inputted
         if soup is not None:
-            self.year_soup = soup
+            self.off_soup = soup
         elif is_season_change:
-            self.year_soup = self.get_year_soup()
+            self.off_soup = self.get_offense_soup()
 
         # Fetch the correct div
         div_id = ['all_team_stats', 'all_passing', 'all_rushing', 'all_returns', 'all_kicking', 'all_punting',
                   'all_team_scoring', 'all_team_conversions', 'all_drives']
-        div_tbls = self.year_soup.find_all('div', attrs={'class': 'table_wrapper'})
+        div_tbls = self.off_soup.find_all('div', attrs={'class': 'table_wrapper'})
 
-        stat_list = []  # Initiate list of dataframes
+        stat_dict = {}  # Initiate dict of dataframes
         for div_tbl in div_tbls:
             # Skip if table not part of the list of ids
             if div_tbl.get('id') not in div_id:
@@ -239,32 +262,11 @@ class GetData:
             # Get the tables
             non_std_tables = []
             if tbl_name in non_std_tables:
-                stat_list.append(self.__scrape_offense_nonstd(tbl))
+                stat_dict[tbl_name] = self.__scrape_defense_nonstd(tbl)  # Same code applies to offense
             else:
-                stat_list.append(self.__scrape_offense_standard(tbl))
-
-
-        # # Uses def_soup
-        # div_tbls = self.def_soup.find_all('div', attrs={'class': 'table_wrapper'})
+                stat_dict[tbl_name] = self.__scrape_defense_standard(tbl)  # Same code applies to offense
         
-        # stat_list = []   # Initiate list of dataframes
-        # for div_tbl in div_tbls:
-        #     tbl = div_tbl.find('table')
-        #     if tbl is None: continue  # Some tables are None, skip them
-        #     try:
-        #         tbl_name = tbl.find('caption').text
-        #     except:
-        #         tbl_name = "UNKNOWN"
-        #         print('Excepted')
-
-        #     # Get the tables
-        #     non_std_tables = ['Team Advanced Defense Table']
-        #     if tbl_name in non_std_tables:
-        #         stat_list.append(self.__scrape_defense_nonstd(tbl))
-        #     else:
-        #         stat_list.append(self.__scrape_defense_standard(tbl))
-
-        # return stat_list
+        return stat_dict
 
     def team_defense_stats(self, soup=None, season=None):
         """
@@ -298,7 +300,7 @@ class GetData:
         # Uses def_soup
         div_tbls = self.def_soup.find_all('div', attrs={'class': 'table_wrapper'})
         
-        stat_list = []   # Initiate list of dataframes
+        stat_dict = {}  # Initiate dict of dataframes
         for div_tbl in div_tbls:
             tbl = div_tbl.find('table')
             if tbl is None: continue  # Some tables are None, skip them
@@ -311,11 +313,11 @@ class GetData:
             # Get the tables
             non_std_tables = ['Team Advanced Defense Table']
             if tbl_name in non_std_tables:
-                stat_list.append(self.__scrape_defense_nonstd(tbl))
+                stat_dict[tbl_name] = self.__scrape_defense_nonstd(tbl)
             else:
-                stat_list.append(self.__scrape_defense_standard(tbl))
+                stat_dict[tbl_name] = self.__scrape_defense_standard(tbl)
 
-        return stat_list
+        return stat_dict
 
     @staticmethod
     def __scrape_defense_standard(tbl):
@@ -328,7 +330,6 @@ class GetData:
         """
         # Set name of table
         tbl_name = tbl.find('caption').text
-        print(tbl_name)
 
         # Get each row
         teams = {}
@@ -378,7 +379,6 @@ class GetData:
         """
         # Set name of table
         tbl_name = tbl.find('caption').text
-        print(tbl_name)
 
         # Get each row
         teams = {}
